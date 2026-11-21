@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fintrack_stocks_postgres
+    environment:
+      POSTGRES_USER: fintrack_user
+      POSTGRES_PASSWORD: fintrack_stocks_password
+      POSTGRES_DB: fintrack_stocks_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - stocks_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintrack_user -d fintrack_stocks_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fintrack_stocks_redis
+    ports:
+      - "6386:6379"
+    volumes:
+      - stocks_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  stocks_postgres_data:
+  stocks_redis_data:

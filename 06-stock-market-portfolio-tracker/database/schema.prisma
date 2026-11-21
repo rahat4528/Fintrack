@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountCategory {
+  TAXABLE_BROKERAGE
+  ROTH_IRA
+  TRADITIONAL_401K
+  CUSTODIAL
+}
+
+enum TradeType {
+  BUY
+  SELL
+  DIVIDEND
+  SPLIT_ADJUSTMENT
+}
+
+enum LotStatus {
+  OPEN
+  PARTIALLY_CLOSED
+  CLOSED
+}
+
+enum CapitalGainTerm {
+  SHORT_TERM
+  LONG_TERM
+}
+
+model User {
+  id           String              @id @default(uuid())
+  email        String              @unique
+  passwordHash String
+  fullName     String
+  accounts     InvestmentAccount[]
+  allocations  TargetAllocation[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@map("users")
+}
+
+model Security {
+  id           String              @id @default(uuid())
+  symbol       String              @unique // AAPL, MSFT, NVDA, VOO
+  name         String
+  sector       String              // Technology, Healthcare, Financials, Index ETF
+  currentPrice Decimal             @db.Decimal(15, 4)
+  positions    Position[]
+  transactions TradeTransaction[]
+  taxLots      TaxLot[]
+  dividends    DividendRecord[]
+  updatedAt    DateTime            @updatedAt
+
+  @@map("securities")
+}
+
+model InvestmentAccount {
+  id           String              @id @default(uuid())
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountName  String
+  category     AccountCategory     @default(TAXABLE_BROKERAGE)
+  currency     String              @default("USD")
+  cashBalance  Decimal             @default(0) @db.Decimal(15, 2)
+  positions    Position[]
+  transactions TradeTransaction[]
+  taxLots      TaxLot[]
+  dividends    DividendRecord[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([userId])
+  @@map("investment_accounts")
+}
+
+model Position {
+  id                  String            @id @default(uuid())
+  accountId           String
+  account             InvestmentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  securityId          String
+  security            Security          @relation(fields: [securityId], references: [id], onDelete: Cascade)
+  totalShares         Decimal           @db.Decimal(18, 6)
+  averageCostPerShare Decimal           @db.Decimal(15, 4)
+  totalCostBasis      Decimal           @db.Decimal(15, 2)
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([accountId, securityId])
+  @@map("positions")
+}
+
+model TaxLot {
+  id                  String            @id @default(uuid())
+  accountId           String
+  account             InvestmentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  securityId          String
+  security            Security          @relation(fields: [securityId], references: [id], onDelete: Cascade)
+  originalShares      Decimal           @db.Decimal(18, 6)
+  remainingShares     Decimal           @db.Decimal(18, 6)
+  costBasisPerShare   Decimal           @db.Decimal(15, 4)
+  totalCostBasis      Decimal           @db.Decimal(15, 2)
+  acquiredDate        DateTime          @default(now())
+  status              LotStatus         @default(OPEN)
+  closedSales         ClosedLotSale[]
+  createdAt           DateTime          @default(now())
+
+  @@index([accountId, securityId, status])
+  @@map("tax_lots")
+}
+
+model TradeTransaction {
+  id              String            @id @default(uuid())
+  accountId       String
+  account         InvestmentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  securityId      String
+  security        Security          @relation(fields: [securityId], references: [id], onDelete: Cascade)
+  tradeType       TradeType
+  shares          Decimal           @db.Decimal(18, 6)
+  pricePerShare   Decimal           @db.Decimal(15, 4)
+  grossAmount     Decimal           @db.Decimal(15, 2)
+  commission      Decimal           @default(0) @db.Decimal(10, 2)
+  netAmount       Decimal           @db.Decimal(15, 2)
+  closedSales     ClosedLotSale[]
+  transactedAt    DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+
+  @@index([accountId, transactedAt])
+  @@map("trade_transactions")
+}
+
+model ClosedLotSale {
+  id              String           @id @default(uuid())
+  transactionId   String
+  transaction     TradeTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  taxLotId        String
+  taxLot          TaxLot           @relation(fields: [taxLotId], references: [id], onDelete: Cascade)
+  sharesSold      Decimal          @db.Decimal(18, 6)
+  costBasis       Decimal          @db.Decimal(15, 2)
+  proceeds        Decimal          @db.Decimal(15, 2)
+  realizedGain    Decimal          @db.Decimal(15, 2)
+  term            CapitalGainTerm
+  soldAt          DateTime         @default(now())
+
+  @@index([taxLotId])
+  @@map("closed_lot_sales")
+}
+
+model DividendRecord {
+  id          String            @id @default(uuid())
+  accountId   String
+  account     InvestmentAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  securityId  String
+  security    Security          @relation(fields: [securityId], references: [id], onDelete: Cascade)
+  amount      Decimal           @db.Decimal(15, 2)
+  isReinvested Boolean          @default(false)
+  sharesAdded Decimal?          @db.Decimal(18, 6)
+  paidAt      DateTime          @default(now())
+
+  @@index([accountId])
+  @@map("dividend_records")
+}
+
+model TargetAllocation {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sector         String   // e.g. "Technology", "Healthcare", "Financials", "Broad Index ETF"
+  targetPercent  Decimal  @db.Decimal(5, 2)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, sector])
+  @@map("target_allocations")
+}
