@@ -7,8 +7,8 @@ A centralized registry of all applications, their designated ports, primary data
 | `01-expense-tracker` | Expense Tracker | 3001 / 4001 | `fintrack_expense_db` | Completed |
 | `02-budget-planning-app` | Budget Planning App | 3002 / 4002 | `fintrack_budget_db` | Completed |
 | `03-banking-application` | Banking Application | 3003 / 4003 | `fintrack_banking_db` | Completed |
-| `04-cryptocurrency-dashboard` | Cryptocurrency Dashboard | 3004 / 4004 | `fintrack_crypto_db` | In Progress |
-| `05-invoice-management-system` | Invoice Management System | 3005 / 4005 | `fintrack_invoice_db` | Planned |
+| `04-cryptocurrency-dashboard` | Cryptocurrency Dashboard | 3004 / 4004 | `fintrack_crypto_db` | Completed |
+| `05-invoice-management-system` | Invoice Management System | 3005 / 4005 | `fintrack_invoice_db` | In Progress |
 | `06-stock-market-portfolio-tracker` | Stock Market Portfolio Tracker | 3006 / 4006 | `fintrack_stocks_db` | Planned |
 
 ---

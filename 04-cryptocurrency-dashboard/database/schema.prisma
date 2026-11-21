@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum AlertCondition {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PERCENT_CHANGE_24H
+}
+
+enum AlertStatus {
+  ACTIVE
+  TRIGGERED
+  MUTED
+  CANCELLED
+}
+
+model User {
+  id           String          @id @default(uuid())
+  email        String          @unique
+  passwordHash String
+  fullName     String
+  portfolios   Portfolio[]
+  priceAlerts  PriceAlert[]
+  watchlist    WatchlistItem[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@map("users")
+}
+
+model Asset {
+  id            String                 @id @default(uuid())
+  symbol        String                 @unique // e.g. BTC, ETH, SOL
+  name          String
+  coingeckoId   String?                @unique
+  decimals      Int                    @default(18)
+  holdings      PortfolioHolding[]
+  transactions  PortfolioTransaction[]
+  priceAlerts   PriceAlert[]
+  marketQuotes  MarketQuote[]
+  watchlists    WatchlistItem[]
+  createdAt     DateTime               @default(now())
+
+  @@map("assets")
+}
+
+model MarketQuote {
+  id           String   @id @default(uuid())
+  assetId      String
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  priceUsd     Decimal  @db.Decimal(24, 8)
+  change24h    Decimal  @db.Decimal(10, 4)
+  volume24h    Decimal  @db.Decimal(28, 4)
+  marketCapUsd Decimal  @db.Decimal(28, 4)
+  isStale      Boolean  @default(false)
+  timestamp    DateTime @default(now())
+
+  @@index([assetId, timestamp(sort: Desc)])
+  @@map("market_quotes")
+}
+
+model Portfolio {
+  id           String                 @id @default(uuid())
+  userId       String
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  currency     String                 @default("USD")
+  holdings     PortfolioHolding[]
+  transactions PortfolioTransaction[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+model PortfolioHolding {
+  id                  String    @id @default(uuid())
+  portfolioId         String
+  portfolio           Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  assetId             String
+  asset               Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  quantity            Decimal   @db.Decimal(38, 18) // High-precision crypto quantity
+  averageCostBasisUsd Decimal   @db.Decimal(24, 8)  // Weighted average cost per token
+  totalInvestedUsd    Decimal   @db.Decimal(24, 8)  // Total net cost invested
+  realizedPnLUsd      Decimal   @default(0) @db.Decimal(24, 8) // Closed profits/losses
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([portfolioId, assetId])
+  @@map("portfolio_holdings")
+}
+
+model PortfolioTransaction {
+  id           String          @id @default(uuid())
+  portfolioId  String
+  portfolio    Portfolio       @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  assetId      String
+  asset        Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type         TransactionType
+  quantity     Decimal         @db.Decimal(38, 18)
+  unitPriceUsd Decimal         @db.Decimal(24, 8)
+  totalCostUsd Decimal         @db.Decimal(24, 8)
+  feeUsd       Decimal         @default(0) @db.Decimal(18, 4)
+  notes        String?
+  transactedAt DateTime        @default(now())
+  createdAt    DateTime        @default(now())
+
+  @@index([portfolioId, transactedAt])
+  @@map("portfolio_transactions")
+}
+
+model PriceAlert {
+  id          String         @id @default(uuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId     String
+  asset       Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  condition   AlertCondition
+  targetValue Decimal        @db.Decimal(24, 8)
+  status      AlertStatus    @default(ACTIVE)
+  triggeredAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId, status])
+  @@map("price_alerts")
+}
+
+model WatchlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, assetId])
+  @@map("watchlist_items")
+}

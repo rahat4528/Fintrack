@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fintrack_crypto_postgres
+    environment:
+      POSTGRES_USER: fintrack_user
+      POSTGRES_PASSWORD: fintrack_crypto_password
+      POSTGRES_DB: fintrack_crypto_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - crypto_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintrack_user -d fintrack_crypto_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fintrack_crypto_redis
+    ports:
+      - "6384:6379"
+    volumes:
+      - crypto_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  crypto_postgres_data:
+  crypto_redis_data:
