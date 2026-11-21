@@ -10,8 +10,8 @@ Tracking implementation, verification, and delivery status across all 6 standalo
 | **Phase 2** | `02-budget-planning-app` | Budget Planning App | Completed | 2026-11-21 | 8 envelope invariant & debt payoff tests passing |
 | **Phase 3** | `03-banking-application` | Banking Application | Completed | 2026-11-21 | 7 double-entry, idempotency & RBAC tests passing |
 | **Phase 4** | `04-cryptocurrency-dashboard` | Cryptocurrency Dashboard | Completed | 2026-11-21 | 7 high-precision, WAC basis, PnL & alert tests passing |
-| **Phase 5** | `05-invoice-management-system` | Invoice Management System | In Progress | - | Architecture, schema & requirements initialized |
-| **Phase 6** | `06-stock-market-portfolio-tracker` | Stock Market Portfolio Tracker | Not Started | - | Pending Phase 5 completion |
+| **Phase 5** | `05-invoice-management-system` | Invoice Management System | Completed | 2026-11-21 | 5 sequential numbering, snapshot & aging tests passing |
+| **Phase 6** | `06-stock-market-portfolio-tracker` | Stock Market Portfolio Tracker | In Progress | - | Architecture, schema & requirements initialized |
 
 ---
 

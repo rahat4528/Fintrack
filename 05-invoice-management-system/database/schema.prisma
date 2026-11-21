@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+  REFUNDED
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  STRIPE_SIMULATED
+  CASH
+  CHECK
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model Organization {
+  id               String       @id @default(uuid())
+  name             String
+  taxNumber        String?
+  currency         String       @default("USD")
+  addressLine1     String?
+  city             String?
+  country          String?
+  invoicePrefix    String       @default("INV")
+  nextInvoiceNum   Int          @default(1)
+  quotePrefix      String       @default("QT")
+  nextQuoteNum     Int          @default(1)
+  users            User[]
+  clients          Client[]
+  products         Product[]
+  invoices         Invoice[]
+  quotations       Quotation[]
+  taxRates         TaxRate[]
+  creditNotes      CreditNote[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String       @unique
+  passwordHash   String
+  fullName       String
+  role           String       @default("OWNER")
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Client {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  email          String
+  phone          String?
+  taxNumber      String?
+  addressLine1   String?
+  city           String?
+  postalCode     String?
+  country        String?
+  invoices       Invoice[]
+  quotations     Quotation[]
+  creditNotes    CreditNote[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@map("clients")
+}
+
+model Product {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  unitPrice      Decimal       @db.Decimal(15, 2)
+  sku            String?
+  invoiceItems   InvoiceItem[]
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId])
+  @@map("products")
+}
+
+model TaxRate {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String        // e.g. "VAT 20%", "Standard Sales Tax 8.25%"
+  ratePercent    Decimal       @db.Decimal(5, 2)
+  invoiceItems   InvoiceItem[]
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId])
+  @@map("tax_rates")
+}
+
+model Invoice {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoiceNumber  String          @unique // e.g. "INV-2026-0001"
+  status         InvoiceStatus   @default(DRAFT)
+  issueDate      DateTime        @default(now())
+  dueDate        DateTime
+  currency       String          @default("USD")
+  
+  subtotalAmount Decimal         @db.Decimal(15, 2)
+  taxAmount      Decimal         @default(0) @db.Decimal(15, 2)
+  discountAmount Decimal         @default(0) @db.Decimal(15, 2)
+  totalAmount    Decimal         @db.Decimal(15, 2)
+  amountPaid     Decimal         @default(0) @db.Decimal(15, 2)
+  balanceDue     Decimal         @db.Decimal(15, 2)
+
+  notes          String?
+  terms          String?
+  
+  // Immutability: complete frozen snapshot recorded when status changes to SENT or PAID
+  frozenSnapshot Json?           
+
+  items          InvoiceItem[]
+  payments       PaymentRecord[]
+  creditNotes    CreditNote[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  taxRateId   String?
+  taxRate     TaxRate? @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  description String
+  quantity    Decimal  @db.Decimal(12, 3)
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  taxPercent  Decimal  @default(0) @db.Decimal(5, 2)
+  taxAmount   Decimal  @default(0) @db.Decimal(15, 2)
+  lineTotal   Decimal  @db.Decimal(15, 2)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model PaymentRecord {
+  id            String        @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(15, 2)
+  paymentMethod PaymentMethod
+  paymentDate   DateTime      @default(now())
+  reference     String?       // Transaction ID or check number
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  @@index([invoiceId])
+  @@map("payment_records")
+}
+
+model Quotation {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  quoteNumber    String          @unique // e.g. "QT-2026-0001"
+  status         QuotationStatus @default(DRAFT)
+  issueDate      DateTime        @default(now())
+  expiryDate     DateTime
+  currency       String          @default("USD")
+  totalAmount    Decimal         @db.Decimal(15, 2)
+  convertedInvoiceId String?
+  items          Json            // List of quoted items
+  notes          String?
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId])
+  @@map("quotations")
+}
+
+model CreditNote {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoiceId      String?
+  invoice        Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  creditNumber   String       @unique
+  amount         Decimal      @db.Decimal(15, 2)
+  reason         String
+  issuedAt       DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("credit_notes")
+}
