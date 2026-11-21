@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fintrack_budget_postgres
+    environment:
+      POSTGRES_USER: fintrack_admin
+      POSTGRES_PASSWORD: fintrack_secure_password
+      POSTGRES_DB: fintrack_budget_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - fintrack_budget_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintrack_admin -d fintrack_budget_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fintrack_budget_redis
+    ports:
+      - "6382:6379"
+    volumes:
+      - fintrack_budget_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  fintrack_budget_pgdata:
+  fintrack_budget_redisdata:

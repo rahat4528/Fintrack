@@ -1,0 +1,209 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum DebtStrategy {
+  SNOWBALL
+  AVALANCHE
+}
+
+enum EventType {
+  ALLOCATE_FUNDS
+  TRANSFER_BETWEEN_ENVELOPES
+  RECORD_ACTIVITY
+  ADJUST_INCOME
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String
+  fullName        String
+  defaultCurrency String         @default("USD")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  budgets         Budget[]
+
+  @@map("users")
+}
+
+model Budget {
+  id              String          @id @default(uuid())
+  userId          String
+  name            String
+  currency        String          @default("USD")
+  startingBalance Decimal         @default(0.00) @db.Decimal(15, 2)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periods         BudgetPeriod[]
+  groups          CategoryGroup[]
+  debtPlans       DebtPlan[]
+  recurringBills  RecurringBill[]
+  events          BudgetEvent[]
+
+  @@index([userId])
+  @@map("budgets")
+}
+
+model BudgetPeriod {
+  id              String          @id @default(uuid())
+  budgetId        String
+  year            Int
+  month           Int             // 1 - 12
+  readyToAssign   Decimal         @default(0.00) @db.Decimal(15, 2)
+  totalIncome     Decimal         @default(0.00) @db.Decimal(15, 2)
+  totalAssigned   Decimal         @default(0.00) @db.Decimal(15, 2)
+  totalActivity   Decimal         @default(0.00) @db.Decimal(15, 2)
+  isClosed        Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  budget          Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  allocations     Allocation[]
+  transactions    BudgetTransaction[]
+
+  @@unique([budgetId, year, month])
+  @@map("budget_periods")
+}
+
+model CategoryGroup {
+  id          String           @id @default(uuid())
+  budgetId    String
+  name        String
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  budget      Budget           @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  categories  BudgetCategory[]
+
+  @@index([budgetId])
+  @@map("category_groups")
+}
+
+model BudgetCategory {
+  id               String          @id @default(uuid())
+  groupId          String
+  name             String
+  targetAmount     Decimal?        @db.Decimal(15, 2)
+  targetDate       DateTime?
+  colorHex         String          @default("#3b82f6")
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  group            CategoryGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  allocations      Allocation[]
+  transactions     BudgetTransaction[]
+  transfersFrom    BudgetTransfer[] @relation("SourceCategory")
+  transfersTo      BudgetTransfer[] @relation("DestinationCategory")
+
+  @@index([groupId])
+  @@map("budget_categories")
+}
+
+model Allocation {
+  id             String         @id @default(uuid())
+  periodId       String
+  categoryId     String
+  assignedAmount Decimal        @default(0.00) @db.Decimal(15, 2)
+  availableAmount Decimal       @default(0.00) @db.Decimal(15, 2)
+  activityAmount Decimal        @default(0.00) @db.Decimal(15, 2)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  period         BudgetPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category       BudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, categoryId])
+  @@map("allocations")
+}
+
+model BudgetTransaction {
+  id          String         @id @default(uuid())
+  periodId    String
+  categoryId  String
+  amount      Decimal        @db.Decimal(15, 2)
+  description String
+  payee       String?
+  date        DateTime
+  createdAt   DateTime       @default(now())
+
+  period      BudgetPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category    BudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([periodId])
+  @@index([categoryId])
+  @@map("budget_transactions")
+}
+
+model BudgetTransfer {
+  id                    String         @id @default(uuid())
+  periodId              String
+  sourceCategoryId      String
+  destinationCategoryId String
+  amount                Decimal        @db.Decimal(15, 2)
+  createdAt             DateTime       @default(now())
+
+  sourceCategory        BudgetCategory @relation("SourceCategory", fields: [sourceCategoryId], references: [id], onDelete: Cascade)
+  destinationCategory   BudgetCategory @relation("DestinationCategory", fields: [destinationCategoryId], references: [id], onDelete: Cascade)
+
+  @@map("budget_transfers")
+}
+
+model DebtPlan {
+  id             String       @id @default(uuid())
+  budgetId       String
+  name           String
+  currentBalance Decimal      @db.Decimal(15, 2)
+  interestRateApr Decimal     @db.Decimal(5, 2) // e.g. 19.99%
+  minimumPayment Decimal      @db.Decimal(15, 2)
+  strategy       DebtStrategy @default(AVALANCHE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  budget         Budget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@index([budgetId])
+  @@map("debt_plans")
+}
+
+model RecurringBill {
+  id          String   @id @default(uuid())
+  budgetId    String
+  name        String
+  amount      Decimal  @db.Decimal(15, 2)
+  dueDay      Int      // 1 - 31
+  frequency   String   @default("MONTHLY")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@index([budgetId])
+  @@map("recurring_bills")
+}
+
+model BudgetEvent {
+  id             String    @id @default(uuid())
+  budgetId       String
+  clientEventId  String?   @unique
+  sequenceNumber Int
+  eventType      EventType
+  payload        Json
+  timestamp      DateTime  @default(now())
+
+  budget         Budget    @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@unique([budgetId, sequenceNumber])
+  @@index([budgetId, timestamp])
+  @@map("budget_events")
+}

@@ -5,7 +5,7 @@ A centralized registry of all applications, their designated ports, primary data
 | Directory | Application Name | Port (FE/BE) | Database Name | Status |
 |---|---|---|---|---|
 | `01-expense-tracker` | Expense Tracker | 3001 / 4001 | `fintrack_expense_db` | Completed |
-| `02-budget-planning-app` | Budget Planning App | 3002 / 4002 | `fintrack_budget_db` | Planned |
+| `02-budget-planning-app` | Budget Planning App | 3002 / 4002 | `fintrack_budget_db` | Completed |
 | `03-banking-application` | Banking Application | 3003 / 4003 | `fintrack_banking_db` | Planned |
 | `04-cryptocurrency-dashboard` | Cryptocurrency Dashboard | 3004 / 4004 | `fintrack_crypto_db` | Planned |
 | `05-invoice-management-system` | Invoice Management System | 3005 / 4005 | `fintrack_invoice_db` | Planned |
