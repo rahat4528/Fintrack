@@ -1,0 +1,273 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  CUSTOMER
+  EMPLOYEE
+  ADMIN
+}
+
+enum AccountType {
+  SAVINGS
+  CURRENT
+}
+
+enum AccountStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+enum TransferStatus {
+  PENDING_AUTHORIZATION
+  COMPLETED
+  FAILED
+  REJECTED
+  REVERSED
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  passwordHash    String
+  fullName        String
+  role            UserRole         @default(CUSTOMER)
+  isMfaEnabled    Boolean          @default(false)
+  failedAttempts  Int              @default(0)
+  isLocked        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  customerProfile CustomerProfile?
+  bankEmployee    BankEmployee?
+  auditLogs       AuditLog[]
+  securityEvents  SecurityEvent[]
+
+  @@map("users")
+}
+
+model CustomerProfile {
+  id            String         @id @default(uuid())
+  userId        String         @unique
+  phoneNumber   String?
+  address       String?
+  kycStatus     KycStatus      @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts      BankAccount[]
+  beneficiaries Beneficiary[]
+  transfers     TransferRequest[]
+  kycRecord     KYCRecord?
+
+  @@map("customer_profiles")
+}
+
+model BankEmployee {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  employeeCode   String         @unique
+  department     String         @default("OPERATIONS")
+  createdAt      DateTime       @default(now())
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertsAssigned MonitoringAlert[]
+
+  @@map("bank_employees")
+}
+
+model BankAccount {
+  id             String         @id @default(uuid())
+  customerId     String
+  accountNumber  String         @unique // e.g. SIM-8492-1001
+  accountType    AccountType    @default(CURRENT)
+  currency       String         @default("USD")
+  currentBalance Decimal        @default(0.00) @db.Decimal(15, 2)
+  status         AccountStatus  @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  customer       CustomerProfile @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ledgerEntries  LedgerEntry[]
+  sourceTransfers TransferRequest[] @relation("SourceAccount")
+  destTransfers   TransferRequest[] @relation("DestAccount")
+  statements      Statement[]
+
+  @@index([customerId])
+  @@index([accountNumber])
+  @@map("bank_accounts")
+}
+
+model LedgerTransaction {
+  id            String         @id @default(uuid())
+  referenceCode String         @unique // e.g. TX-SIM-20260324-001
+  description   String
+  status        TransferStatus @default(COMPLETED)
+  createdAt     DateTime       @default(now())
+
+  entries       LedgerEntry[]
+  transferRequest TransferRequest?
+
+  @@index([createdAt])
+  @@map("ledger_transactions")
+}
+
+model LedgerEntry {
+  id                  String            @id @default(uuid())
+  ledgerTransactionId String
+  bankAccountId       String
+  entryType           EntryType         // DEBIT or CREDIT
+  amount              Decimal           @db.Decimal(15, 2)
+  currency            String            @default("USD")
+  createdAt           DateTime          @default(now())
+
+  transaction         LedgerTransaction @relation(fields: [ledgerTransactionId], references: [id], onDelete: Cascade)
+  account             BankAccount       @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+
+  @@index([bankAccountId, createdAt])
+  @@map("ledger_entries")
+}
+
+model Beneficiary {
+  id                 String          @id @default(uuid())
+  customerId         String
+  name               String
+  targetAccountNumber String
+  bankName           String          @default("Simulated National Clearing")
+  isVerified         Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+
+  customer           CustomerProfile @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("beneficiaries")
+}
+
+model TransferRequest {
+  id                  String             @id @default(uuid())
+  customerId          String
+  sourceAccountId     String
+  destAccountId       String
+  amount              Decimal            @db.Decimal(15, 2)
+  currency            String             @default("USD")
+  idempotencyKey      String             @unique
+  status              TransferStatus     @default(COMPLETED)
+  ledgerTransactionId String?            @unique
+  failureReason       String?
+  createdAt           DateTime           @default(now())
+
+  customer            CustomerProfile    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sourceAccount       BankAccount        @relation("SourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destAccount         BankAccount        @relation("DestAccount", fields: [destAccountId], references: [id], onDelete: Restrict)
+  ledgerTransaction   LedgerTransaction? @relation(fields: [ledgerTransactionId], references: [id])
+
+  @@index([customerId])
+  @@index([idempotencyKey])
+  @@map("transfer_requests")
+}
+
+model TransactionLimit {
+  id               String   @id @default(uuid())
+  accountType      AccountType @unique
+  maxSingleTransfer Decimal @db.Decimal(15, 2)
+  maxDailyTransfer  Decimal @db.Decimal(15, 2)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("transaction_limits")
+}
+
+model KYCRecord {
+  id               String          @id @default(uuid())
+  customerProfileId String         @unique
+  documentType     String          @default("SIMULATED_PASSPORT")
+  documentNumber   String          // Fake sample number
+  status           KycStatus       @default(VERIFIED)
+  reviewedBy       String?
+  reviewNotes      String?
+  reviewedAt       DateTime?
+  createdAt        DateTime        @default(now())
+
+  customer         CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+
+  @@map("kyc_records")
+}
+
+model MonitoringAlert {
+  id          String   @id @default(uuid())
+  ruleName    String
+  severity    String   @default("MEDIUM") // LOW, MEDIUM, HIGH
+  description String
+  assignedTo  String?
+  isResolved  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  employee    BankEmployee? @relation(fields: [assignedTo], references: [id])
+
+  @@map("monitoring_alerts")
+}
+
+model Statement {
+  id            String      @id @default(uuid())
+  bankAccountId String
+  startDate     DateTime
+  endDate       DateTime
+  totalDebits   Decimal     @db.Decimal(15, 2)
+  totalCredits  Decimal     @db.Decimal(15, 2)
+  closingBalance Decimal    @db.Decimal(15, 2)
+  pdfUrl        String?
+  createdAt     DateTime    @default(now())
+
+  account       BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId])
+  @@map("statements")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String
+  beforeState Json?
+  afterState  Json?
+  timestamp   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model SecurityEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  eventType String   // LOGIN_SUCCESS, LOGIN_FAILURE, ACCOUNT_LOCKOUT, LIMIT_EXCEEDED
+  ipAddress String?
+  details   Json?
+  timestamp DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+  @@map("security_events")
+}
